@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>YTM Now Playing</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <div class="logo">♪</div>
+      <div>
+        <h1>YouTube Music</h1>
+        <p>Now playing</p>
+      </div>
+    </header>
+
+    <section id="empty" class="card hidden">
+      <p class="muted">
+        No track found yet.
+      </p>
+      <p class="small">
+        Open or refresh the YouTube Music PWA/tab in this same browser profile,
+        start playing a song, then reopen this popup.
+      </p>
+    </section>
+
+    <section id="track" class="card hidden">
+      <img id="artwork" class="artwork hidden" alt="" />
+      <div class="meta">
+        <div id="title" class="title"></div>
+        <div id="artist" class="artist"></div>
+        <div id="album" class="album"></div>
+        <div id="status" class="status"></div>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="refresh">Refresh</button>
+      <button id="copy">Copy</button>
+    </section>
+
+    <p id="debug" class="debug"></p>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

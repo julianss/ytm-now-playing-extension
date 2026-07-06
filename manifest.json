@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Music Now Playing",
+  "version": "0.1.0",
+  "description": "Shows the current song playing in a YouTube Music tab or PWA.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "YTM Now Playing",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
