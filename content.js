@@ -106,16 +106,10 @@
   };
 
   const getPlaybackProgress = () => {
-    const media = document.querySelector("video, audio");
-    const mediaDuration = Number(media?.duration);
-    const mediaCurrentTime = Number(media?.currentTime);
-    if (Number.isFinite(mediaDuration) && mediaDuration > 0) {
-      return {
-        currentTime: Number.isFinite(mediaCurrentTime) ? mediaCurrentTime : 0,
-        duration: mediaDuration
-      };
-    }
-
+    // Prefer the on-screen progress slider: it tracks the current track only.
+    // The underlying <video>/<audio> element can keep playing a continuous,
+    // gapless buffer across track boundaries (e.g. mixes/radio), so its raw
+    // currentTime/duration keep growing instead of resetting per track.
     const slider = document.querySelector(
       "#progress-bar, tp-yt-paper-slider#progress-bar, ytmusic-player-bar tp-yt-paper-slider"
     );
@@ -125,6 +119,16 @@
       return {
         currentTime: Number.isFinite(valueNow) ? valueNow : 0,
         duration: valueMax
+      };
+    }
+
+    const media = document.querySelector("video, audio");
+    const mediaDuration = Number(media?.duration);
+    const mediaCurrentTime = Number(media?.currentTime);
+    if (Number.isFinite(mediaDuration) && mediaDuration > 0) {
+      return {
+        currentTime: Number.isFinite(mediaCurrentTime) ? mediaCurrentTime : 0,
+        duration: mediaDuration
       };
     }
 
