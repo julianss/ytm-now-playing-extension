@@ -105,11 +105,31 @@
     }
   };
 
-  const getPlaybackProgress = () => {
-    // Prefer the on-screen progress slider: it tracks the current track only.
-    // The underlying <video>/<audio> element can keep playing a continuous,
-    // gapless buffer across track boundaries (e.g. mixes/radio), so its raw
-    // currentTime/duration keep growing instead of resetting per track.
+  // The underlying <video>/<audio> element keeps ticking every second (that part
+  // is reliable), but on gapless/mix playback it can keep counting from where the
+  // previous track left off instead of resetting to 0 for the new track. Anchor
+  // each track to the raw currentTime observed when it was first seen, and report
+  // progress relative to that anchor.
+  let trackAnchor = null; // { key, baseTime }
+
+  const getPlaybackProgress = (trackKey) => {
+    const media = document.querySelector("video, audio");
+    const mediaCurrentTime = Number(media?.currentTime);
+    const mediaDuration = Number(media?.duration);
+
+    if (Number.isFinite(mediaCurrentTime)) {
+      if (!trackAnchor || trackAnchor.key !== trackKey || mediaCurrentTime < trackAnchor.baseTime) {
+        trackAnchor = { key: trackKey, baseTime: mediaCurrentTime };
+      }
+
+      const relativeCurrentTime = Math.max(0, mediaCurrentTime - trackAnchor.baseTime);
+      const duration = Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : 0;
+      return {
+        currentTime: relativeCurrentTime,
+        duration
+      };
+    }
+
     const slider = document.querySelector(
       "#progress-bar, tp-yt-paper-slider#progress-bar, ytmusic-player-bar tp-yt-paper-slider"
     );
@@ -119,16 +139,6 @@
       return {
         currentTime: Number.isFinite(valueNow) ? valueNow : 0,
         duration: valueMax
-      };
-    }
-
-    const media = document.querySelector("video, audio");
-    const mediaDuration = Number(media?.duration);
-    const mediaCurrentTime = Number(media?.currentTime);
-    if (Number.isFinite(mediaDuration) && mediaDuration > 0) {
-      return {
-        currentTime: Number.isFinite(mediaCurrentTime) ? mediaCurrentTime : 0,
-        duration: mediaDuration
       };
     }
 
@@ -215,7 +225,7 @@
     const artist = dom?.artist || media?.artist || "";
     const album = dom?.album || media?.album || "";
     const artwork = dom?.artwork || media?.artwork || "";
-    const progress = getPlaybackProgress();
+    const progress = getPlaybackProgress(`${title}::${artist}::${album}`);
 
     if (!title && !artist && !album) return null;
 
