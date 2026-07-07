@@ -123,7 +123,13 @@
       }
 
       const relativeCurrentTime = Math.max(0, mediaCurrentTime - trackAnchor.baseTime);
-      const duration = Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : 0;
+      // On gapless/mix playback the reported duration is the cumulative length of
+      // everything streamed through the element, not the current track. Offset it
+      // by the same anchor so it reflects only the current track. When a fresh
+      // media element is used per track, baseTime is ~0 and this is a no-op.
+      const rawDuration = Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : 0;
+      const duration =
+        rawDuration > trackAnchor.baseTime ? rawDuration - trackAnchor.baseTime : rawDuration;
       return {
         currentTime: relativeCurrentTime,
         duration
