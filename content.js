@@ -69,6 +69,14 @@
     return "";
   };
 
+  const firstElement = (root, selectors) => {
+    for (const selector of selectors) {
+      const el = root?.querySelector?.(selector);
+      if (el) return el;
+    }
+    return null;
+  };
+
   const parseDocumentTitle = () => {
     // Usually looks like: "Song Name - YouTube Music"
     const raw = clean(document.title);
@@ -105,60 +113,108 @@
     }
   };
 
-  // The underlying <video>/<audio> element keeps ticking every second (that part
-  // is reliable), but on gapless/mix playback it can keep counting from where the
-  // previous track left off instead of resetting to 0 for the new track. Anchor
-  // each track to the raw currentTime observed when it was first seen, and report
-  // progress relative to that anchor.
+  const getPlayerRoot = () =>
+    document.querySelector("ytmusic-player-bar") ||
+    document.querySelector("tp-yt-paper-toast") ||
+    document;
+
+  // YTM's own player-bar clock ("1:23 / 4:05") is what the UI actually shows the
+  // user, so it's already correct per-track (YTM resets it itself on track change,
+  // including gapless/mix playback). Prefer parsing that text directly instead of
+  // reading the <video>/<audio> element, whose currentTime/duration can keep
+  // counting across tracks during gapless/mix playback.
+  const parseClockToSeconds = (text) => {
+    const match = clean(text).match(/^(\d{1,2}(?::\d{2}){1,2})$/);
+    if (!match) return null;
+    const parts = match[1].split(":").map(Number);
+    if (parts.some((part) => !Number.isFinite(part))) return null;
+    return parts.reduce((total, part) => total * 60 + part, 0);
+  };
+
+  const getDomClockProgress = (player) => {
+    const el = firstElement(player, [
+      ".time-info.ytmusic-player-bar",
+      "ytmusic-player-bar .time-info",
+      ".time-info",
+      "#time-info"
+    ]);
+    const text = clean(el?.textContent);
+    if (!text) return null;
+
+    const match = text.match(/^(.+?)\s*\/\s*(.+)$/);
+    if (!match) return null;
+
+    const currentTime = parseClockToSeconds(match[1]);
+    const duration = parseClockToSeconds(match[2]);
+    if (currentTime === null || duration === null || duration <= 0) return null;
+
+    return { currentTime, duration };
+  };
+
+  const getDomSliderProgress = (player) => {
+    const slider = firstElement(player, [
+      "#progress-bar",
+      "tp-yt-paper-slider#progress-bar",
+      "ytmusic-player-bar tp-yt-paper-slider"
+    ]);
+    const valueNow = Number(slider?.getAttribute?.("aria-valuenow"));
+    const valueMax = Number(slider?.getAttribute?.("aria-valuemax"));
+    if (!Number.isFinite(valueMax) || valueMax <= 0) return null;
+
+    return {
+      currentTime: Number.isFinite(valueNow) ? valueNow : 0,
+      duration: valueMax
+    };
+  };
+
+  // Last-resort fallback: the underlying <video>/<audio> element keeps ticking
+  // every second (that part is reliable), but on gapless/mix playback it can keep
+  // counting from where the previous track left off instead of resetting to 0 for
+  // the new track. Anchor each track to the raw currentTime observed when it was
+  // first seen, and report progress relative to that anchor.
   let trackAnchor = null; // { key, baseTime }
 
-  const getPlaybackProgress = (trackKey) => {
+  const getMediaElementProgress = (trackKey) => {
     const media = document.querySelector("video, audio");
     const mediaCurrentTime = Number(media?.currentTime);
     const mediaDuration = Number(media?.duration);
 
-    if (Number.isFinite(mediaCurrentTime)) {
-      if (!trackAnchor || trackAnchor.key !== trackKey || mediaCurrentTime < trackAnchor.baseTime) {
-        trackAnchor = { key: trackKey, baseTime: mediaCurrentTime };
-      }
+    if (!Number.isFinite(mediaCurrentTime)) return null;
 
-      const relativeCurrentTime = Math.max(0, mediaCurrentTime - trackAnchor.baseTime);
-      // On gapless/mix playback the reported duration is the cumulative length of
-      // everything streamed through the element, not the current track. Offset it
-      // by the same anchor so it reflects only the current track. When a fresh
-      // media element is used per track, baseTime is ~0 and this is a no-op.
-      const rawDuration = Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : 0;
-      const duration =
-        rawDuration > trackAnchor.baseTime ? rawDuration - trackAnchor.baseTime : rawDuration;
-      return {
-        currentTime: relativeCurrentTime,
-        duration
-      };
+    if (!trackAnchor || trackAnchor.key !== trackKey || mediaCurrentTime < trackAnchor.baseTime) {
+      trackAnchor = { key: trackKey, baseTime: mediaCurrentTime };
     }
 
-    const slider = document.querySelector(
-      "#progress-bar, tp-yt-paper-slider#progress-bar, ytmusic-player-bar tp-yt-paper-slider"
-    );
-    const valueNow = Number(slider?.getAttribute?.("aria-valuenow"));
-    const valueMax = Number(slider?.getAttribute?.("aria-valuemax"));
-    if (Number.isFinite(valueMax) && valueMax > 0) {
-      return {
-        currentTime: Number.isFinite(valueNow) ? valueNow : 0,
-        duration: valueMax
-      };
-    }
+    const relativeCurrentTime = Math.max(0, mediaCurrentTime - trackAnchor.baseTime);
+    // On gapless/mix playback the reported duration is the cumulative length of
+    // everything streamed through the element, not the current track. Offset it
+    // by the same anchor so it reflects only the current track. When a fresh
+    // media element is used per track, baseTime is ~0 and this is a no-op.
+    const rawDuration = Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : 0;
+    const duration =
+      rawDuration > trackAnchor.baseTime ? rawDuration - trackAnchor.baseTime : rawDuration;
 
     return {
-      currentTime: null,
-      duration: null
+      currentTime: relativeCurrentTime,
+      duration
     };
   };
 
+  const getPlaybackProgress = (trackKey, player) => {
+    const domClock = getDomClockProgress(player);
+    if (domClock) return { ...domClock, source: "domClock" };
+
+    const domSlider = getDomSliderProgress(player);
+    if (domSlider) return { ...domSlider, source: "domSlider" };
+
+    const media = getMediaElementProgress(trackKey);
+    if (media) return { ...media, source: "mediaElement" };
+
+    return { currentTime: null, duration: null, source: "none" };
+  };
+
   const getDomTrack = () => {
-    const player =
-      document.querySelector("ytmusic-player-bar") ||
-      document.querySelector("tp-yt-paper-toast") ||
-      document;
+    const player = getPlayerRoot();
 
     const title =
       firstText(player, [
@@ -231,7 +287,7 @@
     const artist = dom?.artist || media?.artist || "";
     const album = dom?.album || media?.album || "";
     const artwork = dom?.artwork || media?.artwork || "";
-    const progress = getPlaybackProgress(`${title}::${artist}::${album}`);
+    const progress = getPlaybackProgress(`${title}::${artist}::${album}`, getPlayerRoot());
 
     if (!title && !artist && !album) return null;
 
@@ -242,6 +298,7 @@
       artwork,
       currentTime: progress.currentTime,
       duration: progress.duration,
+      progressSource: progress.source,
       isPlaying: dom?.isPlaying,
       source: dom?.source || media?.source || "unknown",
       url: location.href,

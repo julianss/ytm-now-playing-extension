@@ -38,7 +38,12 @@ const showTrack = (track) => {
         ? "Paused"
         : "Playback state unknown";
 
-  $("status").textContent = `${playing} · Updated ${formatTime(track.updatedAt)}`;
+  const progress =
+    Number.isFinite(track.currentTime) && Number.isFinite(track.duration) && track.duration > 0
+      ? ` · ${Math.floor(track.currentTime)}s / ${Math.floor(track.duration)}s (${track.progressSource || "unknown"})`
+      : "";
+
+  $("status").textContent = `${playing} · Updated ${formatTime(track.updatedAt)}${progress}`;
 
   if (track.artwork) {
     $("artwork").src = track.artwork;
